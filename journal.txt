@@ -1,0 +1,319 @@
+Attempting to reproduce the 2 million packets experiment results
+
+Two sets of results are in the blog post, one for c6gn.16xlarge,
+which gets ~540ms latency with just over 2 million req/s with
+1150 concurrent connections. Latency maxes out at ~1.8ms.
+
+The other for a t4g.micro is more modest, 100,000 reqs/s with 100
+connections, adding about 720 microseconds of latency.
+
+I was able to reproduce the t4g.micro results, but the c6gn.16xlarge
+result set was coming in about 50% under, at ~1M reqs/s using 1150
+connections.
+
+Using perf top -g shows a lot of time being spent in ha_random64,
+which turns out to be a thread safe function. It lives in 
+haproxy/src/tools.c. The comments for the method suggest that on
+64 bit architectures such as aarch64, it will use a double-cas if
+available, otherwise falling back to a local lock.
+
+Given that `perf` suggests haproxy is spending >50% of time in
+ha_random64, I wonder if we are getting local lock and not the
+CAS behaviour.
+
+GCC 10 is being used, referenced in the article, but we are unsure
+exactly which compiler version was used in the original benchmarks.
+
+Possible items to try:
+
+ * Research double-cas and see if there are gcc settings or other
+   flags there
+
+ * Try clang, maybe it will use double-cas?
+
+ * Does this CPU support double cas, and how can we prove that?
+
+ * Why is ha_random64 being called? Maybe there is some config
+   we can use to skip this. Need a perf trace?
+
+ * Try haproxy 2.4-dev, maybe improvements are made there, although
+   2.3 should not exhibit this problem either, per the benchmark
+   results
+
+ * Convert from 46 threads to 46 processes, will prove if locking
+   is the problem as there will be no data-sharing
+
+
+Checking for presence of CAS support seems to be the two defines in
+ha_random64, per
+
+```
+#if defined(USE_THREAD) && defined(HA_CAS_IS_8B) && defined(HA_HAVE_CAS_DW)
+```
+
+Entries in compiler.h hint we should have these features.
+
+haproxy -vv shows CPU=generic. (!!)
+
+Added CPU=native when compiling haproxy.
+
+Native on this system is:
+
+```
+$ gcc -march=native -Q --help=target
+The following options are target specific:
+  -mabi=                      		lp64
+  -march=                     		armv8.2-a+crypto+fp16+rcpc+dotprod
+  -mbig-endian                		[disabled]
+  -mbionic                    		[disabled]
+  -mbranch-protection=        		
+  -mcmodel=                   		small
+  -mcpu=                      		generic
+  -mfix-cortex-a53-835769     		[enabled]
+  -mfix-cortex-a53-843419     		[enabled]
+  -mgeneral-regs-only         		[disabled]
+  -mglibc                     		[enabled]
+  -mharden-sls=               		
+  -mlittle-endian             		[enabled]
+  -mlow-precision-div         		[disabled]
+  -mlow-precision-recip-sqrt  		[disabled]
+  -mlow-precision-sqrt        		[disabled]
+  -mmusl                      		[disabled]
+  -momit-leaf-frame-pointer   		[enabled]
+  -moutline-atomics           		[disabled]
+  -moverride=<string>         		
+  -mpc-relative-literal-loads 		[enabled]
+  -msign-return-address=      		none
+  -mstack-protector-guard-offset= 	
+  -mstack-protector-guard-reg= 		
+  -mstack-protector-guard=    		global
+  -mstrict-align              		[disabled]
+  -msve-vector-bits=<number>  		scalable
+  -mtls-dialect=              		desc
+  -mtls-size=                 		24
+  -mtrack-speculation         		[disabled]
+  -mtune=                     		generic
+  -muclibc                    		[disabled]
+  -mverbose-cost-dump         		[disabled]
+
+  Known AArch64 ABIs (for use with the -mabi= option):
+    ilp32 lp64
+
+  Supported AArch64 return address signing scope (for use with -msign-return-address= option):
+    all non-leaf none
+
+  The code model option names for -mcmodel:
+    large small tiny
+
+  Valid arguments to -mstack-protector-guard=:
+    global sysreg
+
+  The possible SVE vector lengths:
+    1024 128 2048 256 512 scalable
+
+  The possible TLS dialects:
+    desc trad
+
+```
+
+haproxy -vv now outputs CPU=native.
+
+Pushing a bit further, let's use the correct march and mtune values
+for this platform, per https://github.com/aws/aws-graviton-getting-started/blob/master/c-c%2B%2B.md
+
+Adding `CPU_CFLAGS="-march=armv8.2-a+fp16+rcpc+dotprod+crypto
+-mtune=neoverse-n1 -O3"` to the make command...
+
+
+Retrying on c6gn.16xlarge with this new config is now giving about
+1.6M-1.7M rps. Still at least 20% short of the published benchmarks.
+
+Time for `perf top -g` again on the proxy host.
+
+haproxy cores are now split 50%-50% usr-sys, was 80%-20% before, so this means
+the userspace process is doing less work. This is good.
+
+Network cores are about 5-10% sysintr. Watching /proc/interrupts shows
+the top 16 cores are getting an even spread of net irqs. There are 32
+Tx-Rx NIC queues piping into 16 cores.
+
+perf output looks good, spending time in the right functions
+
+```
++   95.70%     0.42%  haproxy             [.] run_poll_loop
++   71.30%     0.86%  haproxy             [.] process_runnable_tasks
++   70.29%     1.28%  haproxy             [.] run_tasks_from_lists
++   51.80%     4.87%  haproxy             [.] process_stream
++   45.38%     1.15%  [kernel]            [k] el0_svc_common.constprop.0
++   25.87%     0.20%  haproxy             [.] si_cs_send
++   25.14%     1.72%  haproxy             [.] h1_snd_buf
++   22.07%     0.26%  haproxy             [.] h1_send
++   22.07%     2.27%  haproxy             [.] _do_poll
++   21.70%     1.23%  haproxy             [.] raw_sock_from_buf
++   20.32%     0.40%  libpthread-2.31.so  [.] __libc_send
++   19.55%     0.04%  [kernel]            [k] __arm64_sys_sendto
++   19.41%     0.09%  [kernel]            [k] __sys_sendto
++   18.67%     0.05%  [kernel]            [k] sock_sendmsg
++   18.45%     0.04%  [kernel]            [k] inet_sendmsg
++   18.39%     0.01%  [kernel]            [k] tcp_sendmsg
++   17.94%     0.52%  [kernel]            [k] tcp_sendmsg_locked
++   14.47%     0.14%  libc-2.31.so        [.] epoll_pwait
+```
+
+check server host next.
+
+Much quieter on the server, 3% usr - 80% sys - 17% idle for httpterm cores,
+netirq cores mostly idle.
+
+checking client host:
+
+hardly any userspace activity, h1load cores mostly generating sysintr, about
+70%.
+
+No obvious bottlenecks on client or server. The bottleneck still seems to be
+on proxy, maybe the userspace load can be reduced further?
+
+Trying haproxy-2.4-dev, as there do seem to be recent atomic/arm64 commits.
+
+
+Trying to remove OS level optimizations next so that our setup can be as
+vanilla as possible. More vanilla = easier to manage.
+
+Removing all the `modprobe -r` and `sysctl` changes doesn't materially change
+reqs/s, but does seem to have increased latencies earlier in the tail. 99.9
+comes in at around 6ms, vs 0.8ms for instance.
+
+Is it possible to get the flatter latency curve?
+
+Adding _just_ `sudo tuned-adm profile network-latency` seems to restore low
+latency times! 99.9 back to sub-millisecond.
+
+
+Next comparing two similar sized instances on both aarch64 and x86-64:
+c5.2xlarge vs c6g.2xlarge both 8vcpu/16GB.
+
+Running 2.3, c6g appears to be slightly faster and lower latency, with
+the same tail latencies. 2.4-dev seems worse than 2.3 on the c6g run.
+
+
+A more detailed look at the tuned settings:
+
+network latency settings:
+
+*busy_read, busy_poll*, set 50ns as recommended by docs
+
+https://www.kernel.org/doc/html/latest/admin-guide/sysctl/net.html#busy-poll
+https://www.kernel.org/doc/html/latest/admin-guide/sysctl/net.html#busy-read
+
+*tcp_fastopen*, set to 0x3, thereby enabling for client and server
+
+https://www.kernel.org/doc/html/latest/networking/ip-sysctl.html
+
+*numa_balancing*, set to disabled
+
+pertinent quote from docs "If the target workload is already bound to NUMA
+nodes then this feature should be disabled."
+
+https://www.kernel.org/doc/html/latest/admin-guide/sysctl/kernel.html#numa-balancing
+
+*skew_tick* a kernel boot parameter for reducing jitter.
+
+Use `dmesg | grep "Command line"` for showing the currently booted kernel's
+params.
+
+
+Adding latency to the mix
+=========================
+
+These benchmarks are great for finding the edge of what is possible, and for
+finding out what the next limit is, be it saturated CPU (add more cores), a
+maxed network (add a fatter pipe), etc. However, using 0ms responses for the
+server side is not indicative of how a system behaves when delays occur.
+
+Because multiplexing is not widespread, a connection can only have one request
+in flight at a time -- another request cannot be sent down it until the first
+request has returned a response. When everything is going at full speed, only a
+few connections are needed -- ~100 for a very lightly spec'd system, and ~1150
+for an enterprise grade 64 core behemoth
+
+
+
+
+How many connections do we need to be able to maintain? all server maxconns + 5 second queues for each backend
+
+[18*2, 240*1, 96*2, 48*4, 48*2, 110*3, 30*4, 7*11, 3*4, 1*523].sum
+
+pulse and custnotif are both unbounded, if not a risk to the app itself, still
+a risk to haproxy itself -- connections will stack up there unbounded if those
+apps slow down and cause haproxy to run out of resources. a maxconn for all of
+haproxy will help with stability of the system, but still cause outages for
+users. just a state we can recover from. we'd like to prevent getting into
+that state to begin with.
+
+5 sec queue, assuming incoming rate of 4,000 rps = 20,000 requests stacked
+across all backends
+
+
+
+Load tool breaks at 126 seconds into warmup phase regardless of specifc high
+connection counts
+
+
+maxconn but _also_ maxconnrate?
+
+Two questions:
+
+1. How can we prevent failure?
+
+ - Prevent systems from getting overrun by dropping / shaping traffic as
+   soon as reasonably possible:
+
+   For mass traffic that we don't want (DDoS), this is the edge
+
+   For mass traffic that we do want (bots), wherever we can place
+   the logic to decide what to do -- this is probably haproxy
+
+2. How can we recover from failure sooner?
+
+ - Set back pressure so components aren't overwhelmed = quicker recovery
+
+   This means setting a back pressure (maxconn) for haproxy, means
+   ALB will fail sooner (IF we look at retries and timeouts 3x10 seems
+   excessive for haproxy not answering)
+
+
+
+c5.2xlarge starts to drop packets at 9,200 open connections per ethtool
+ena stats.
+
+c5n.2xlarge does much better at this level goes to 5 x 9,200 (each mapping
+to another port.)
+
+
+
+
+
+
+
+
+
+What's next
+===========
+
+ * Test SSL
+ * Test with docker images - what is the impact? (hopefully none if net=host)
+   Requires a docker haproxy-arm64 image
+ * Test specific configs any common settings?
+   - What happens with maxconn set?
+ * Try HTT on/off on x86
+
+ * Find "breaking point" maxconn
+
+
+Useful tools
+
+ss -s
+nstat
+sar -n DEV 1
+ethtool -S eth0
+ethtool -S eth0 | grep -v ": 0" # ignore zero counters

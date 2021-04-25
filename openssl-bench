@@ -1,0 +1,57 @@
+##
+## TODO: adapt this for somewhere sane like amazon linux 2
+## get errors on ubuntu
+
+sudo apt-get update
+sudo apt-get upgrade
+
+
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential libssl-dev libpcre2-dev zlib1g-dev gcc-10  -qq > /dev/null
+
+openssl version -a
+
+export OPENSSL_VERSION=1.1.1k
+
+curl -OJ https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz && \
+    tar zxvf openssl-${OPENSSL_VERSION}.tar.gz && \
+    cd openssl-${OPENSSL_VERSION} && \
+    ./config CC=/usr/bin/gcc-10 --prefix=/tmp/openssl && \
+    make && \
+    make test && \
+    make install_sw
+
+    sudo ldconfig -v
+
+
+
+###### amznl2
+
+sudo yum update && \
+sudo yum groupinstall -y 'Development Tools' && \
+sudo yum install -y gcc10
+
+/usr/bin/gcc10-gcc --version
+
+export OPENSSL_VERSION=1.1.1k
+
+curl -OJ https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz && \
+    tar zxvf openssl-${OPENSSL_VERSION}.tar.gz && \
+    cd openssl-${OPENSSL_VERSION} && \
+    ./config enable-ec_nistp_64_gcc_128 CC=/usr/bin/gcc10-gcc --prefix=/tmp/openssl \
+        --openssldir=/tmp/openssl -march=native -mtune=neoverse-n1 && \
+    make && \
+    make test && \
+    make install_sw
+
+
+LD_LIBRARY_PATH=/tmp/openssl/lib/ /tmp/openssl/bin/openssl version -a
+LD_LIBRARY_PATH=/tmp/openssl/lib/ /tmp/openssl/bin/openssl speed aes-128-cbc ecdh
+
+curl -OJ https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz && \
+    tar zxvf openssl-${OPENSSL_VERSION}.tar.gz && \
+    cd openssl-${OPENSSL_VERSION} && \
+    ./config CC=/usr/bin/gcc10-gcc --prefix=/tmp/openssl \
+        --openssldir=/tmp/openssl -march=native && \
+    make && \
+    make test && \
+    make install_sw

@@ -1,0 +1,14 @@
+$ LD_LIBRARY_PATH=/tmp/openssl/lib/ bin/openssl speed aes-128-cbc
+Doing aes-128 cbc for 3s on 16 size blocks: 36022317 aes-128 cbc's in 3.00s
+Doing aes-128 cbc for 3s on 64 size blocks: 9567188 aes-128 cbc's in 3.00s
+Doing aes-128 cbc for 3s on 256 size blocks: 2416967 aes-128 cbc's in 3.00s
+Doing aes-128 cbc for 3s on 1024 size blocks: 609518 aes-128 cbc's in 3.00s
+Doing aes-128 cbc for 3s on 8192 size blocks: 76391 aes-128 cbc's in 3.00s
+Doing aes-128 cbc for 3s on 16384 size blocks: 38198 aes-128 cbc's in 3.00s
+OpenSSL 1.1.1k  25 Mar 2021
+built on: Sun Apr 11 18:44:05 2021 UTC
+options:bn(64,64) rc4(char) des(int) aes(partial) idea(int) blowfish(ptr)
+compiler: /usr/bin/gcc10-gcc -fPIC -pthread -Wa,--noexecstack -Wall -O3 -DOPENSSL_USE_NODELETE -DOPENSSL_PIC -DOPENSSL_CPUID_OBJ -DOPENSSL_BN_ASM_MONT -DSHA1_ASM -DSHA256_ASM -DSHA512_ASM -DKECCAK1600_ASM -DVPAES_ASM -DECP_NISTZ256_ASM -DPOLY1305_ASM -DNDEBUG
+The 'numbers' are in 1000s of bytes per second processed.
+type             16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes  16384 bytes
+aes-128 cbc     192119.02k   204100.01k   206247.85k   208048.81k   208598.36k   208612.01k

@@ -1,0 +1,77 @@
+Determining compiler arch output
+================================
+
+$ echo "int main(){return 1;}" > x.c
+
+$ /usr/bin/gcc-10 -S x.c
+
+$ cat x.s
+	.arch armv8-a
+	.file	"x.c"
+	.text
+	.align	2
+	.global	main
+	.type	main, %function
+main:
+.LFB0:
+	.cfi_startproc
+	mov	w0, 1
+	ret
+	.cfi_endproc
+.LFE0:
+	.size	main, .-main
+	.ident	"GCC: (Ubuntu 10.2.0-5ubuntu1~20.04) 10.2.0"
+	.section	.note.GNU-stack,"",@progbits
+
+
+$ /usr/bin/gcc-10 -mtune=neoverse-n1 -march=armv8.2-a+fp16+rcpc+dotprod+crypto -S x.c
+
+$ cat x.s
+	.arch armv8.2-a+crypto+crc+fp16+rcpc+dotprod
+	.file	"x.c"
+	.text
+	.align	2
+	.global	main
+	.type	main, %function
+main:
+.LFB0:
+	.cfi_startproc
+	mov	w0, 1
+	ret
+	.cfi_endproc
+.LFE0:
+	.size	main, .-main
+	.ident	"GCC: (Ubuntu 10.2.0-5ubuntu1~20.04) 10.2.0"
+	.section	.note.GNU-stack,"",@progbits
+
+
+$ /usr/bin/gcc-10 -mtune=neoverse-n1 -march=native -S x.c
+
+$ cat x.s
+	.arch armv8.2-a+crypto+crc+fp16+rcpc+dotprod+ssbs
+	.file	"x.c"
+	.text
+	.align	2
+	.global	main
+	.type	main, %function
+main:
+.LFB0:
+	.cfi_startproc
+	mov	w0, 1
+	ret
+	.cfi_endproc
+.LFE0:
+	.size	main, .-main
+	.ident	"GCC: (Ubuntu 10.2.0-5ubuntu1~20.04) 10.2.0"
+	.section	.note.GNU-stack,"",@progbits
+
+
+Determining march flags and other compiler support
+==================================================
+
+gcc -march=native -Q --help=target
+
+
+Resources
+
+https://github.com/aws/aws-graviton-getting-started/blob/master/c-c%2B%2B.md

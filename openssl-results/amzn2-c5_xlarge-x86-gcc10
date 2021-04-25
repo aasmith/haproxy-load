@@ -1,0 +1,14 @@
+$ LD_LIBRARY_PATH=/tmp/openssl/lib/ bin/openssl speed aes-128-cbc
+Doing aes-128 cbc for 3s on 16 size blocks: 42441049 aes-128 cbc's in 3.00s
+Doing aes-128 cbc for 3s on 64 size blocks: 10968713 aes-128 cbc's in 3.00s
+Doing aes-128 cbc for 3s on 256 size blocks: 2746462 aes-128 cbc's in 3.00s
+Doing aes-128 cbc for 3s on 1024 size blocks: 692729 aes-128 cbc's in 3.00s
+Doing aes-128 cbc for 3s on 8192 size blocks: 86778 aes-128 cbc's in 3.00s
+Doing aes-128 cbc for 3s on 16384 size blocks: 43394 aes-128 cbc's in 3.00s
+OpenSSL 1.1.1k  25 Mar 2021
+built on: Sun Apr 11 19:09:22 2021 UTC
+options:bn(64,64) rc4(16x,int) des(int) aes(partial) idea(int) blowfish(ptr)
+compiler: /usr/bin/gcc10-gcc -fPIC -pthread -m64 -Wa,--noexecstack -Wall -O3 -DOPENSSL_USE_NODELETE -DL_ENDIAN -DOPENSSL_PIC -DOPENSSL_CPUID_OBJ -DOPENSSL_IA32_SSE2 -DOPENSSL_BN_ASM_MONT -DOPENSSL_BN_ASM_MONT5 -DOPENSSL_BN_ASM_GF2m -DSHA1_ASM -DSHA256_ASM -DSHA512_ASM -DKECCAK1600_ASM -DRC4_ASM -DMD5_ASM -DAESNI_ASM -DVPAES_ASM -DGHASH_ASM -DECP_NISTZ256_ASM -DX25519_ASM -DPOLY1305_ASM -DNDEBUG
+The 'numbers' are in 1000s of bytes per second processed.
+type             16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes  16384 bytes
+aes-128 cbc     226352.26k   233999.21k   234364.76k   236451.50k   236961.79k   236989.10k

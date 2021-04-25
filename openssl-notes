@@ -1,0 +1,114 @@
+objective: find the fastest cipher commonly supported (browsers, ALBs)
+           on gravtion2 processors and compare to x86
+
+
+finding the optimized ciphers:
+
+This file in the openssl project suggests that AES GCM is optimized:
+
+https://github.com/openssl/openssl/pull/9818
+https://github.com/openssl/openssl/blob/8020d79b4033400d0ef659a361c05b6902944042/providers/implementations/ciphers/cipher_aes_gcm_hw_armv8.inc#L15
+
+especially AES GCM 128 192 256
+
+LD_LIBRARY_PATH=/tmp/openssl/lib/ /tmp/openssl/bin/openssl speed -evp aes-128-gcm
+LD_LIBRARY_PATH=/tmp/openssl/lib/ /tmp/openssl/bin/openssl speed -evp aes-192-gcm
+LD_LIBRARY_PATH=/tmp/openssl/lib/ /tmp/openssl/bin/openssl speed -evp aes-256-gcm
+
+LD_LIBRARY_PATH=/tmp/openssl/lib/ /tmp/openssl/bin/openssl ciphers | tr : '\n' | grep GCM
+
+we should remove CBCs
+
+the mysterious list of _lowercase_ openssl cipher algs lives in src at
+openssl-1.1.1k/crypto/objects/objects.txt
+
+supported lists:
+
+ELBs https://docs.aws.amazon.com/elasticloadbalancing/latest/classic/elb-security-policy-table.html
+ALBs https://docs.aws.amazon.com/elasticloadbalancing/latest/application/create-https-listener.html#describe-ssl-policies
+
+Chrome https://www.chromestatus.com/feature/5659196699705344
+
+"Historically, TLS used AES ciphers based on a flawed CBC-mode-based construction.
+These ciphers are fragile and very difficult to implement securely. TLS 1.2 added
+better ciphers based on AES-GCM. We current support AES_128_GCM, but many servers
+order by key size above all else, placing the legacy AES_256_CBC above our
+preferred AES_128_GCM. To simplify server configuration and negotiate modern
+ciphers with more existing servers, we'll be adding AES_256_GCM as well."
+
+
+https://security.stackexchange.com/questions/184305/why-would-i-ever-use-aes-256-cbc-if-aes-256-gcm-is-more-secure
+https://github.com/ARM-software/AArch64cryptolib
+
+==================
+RESULTS
+==================
+
+c6g.large, stock openssl:
+
+The 'numbers' are in 1000s of bytes per second processed.
+type             16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes
+aes-128-gcm     478325.95k  1146154.51k  1522197.02k  1665807.70k  1709692.25k
+aes-192-gcm     459929.90k  1056184.55k  1414824.62k  1531187.88k  1576285.53k
+aes-256-gcm     440398.60k   998378.88k  1315190.61k  1415841.45k  1460931.24k
+
+OpenSSL 1.0.2k-fips  26 Jan 2017
+built on: reproducible build, date unspecified
+platform: linux-aarch64
+options:  bn(64,64) md2(int) rc4(ptr,char) des(idx,cisc,16,int) idea(int) blowfish(ptr)
+compiler: gcc -I. -I.. -I../include  -fPIC -DOPENSSL_PIC -DZLIB -DOPENSSL_THREADS -D_REENTRANT -DDSO_DLFCN -DHAVE_DLFCN_H -DKRB5_MIT -DL_ENDIAN -Wall -O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector-strong --param=ssp-buffer-size=4 -grecord-gcc-switches -moutline-atomics   -Wa,--noexecstack -DPURIFY -DSHA1_ASM -DSHA256_ASM -DSHA512_ASM
+OPENSSLDIR: "/etc/pki/tls"
+engines:  dynamic
+
+
+c6g.large, custom:
+
+The 'numbers' are in 1000s of bytes per second processed.
+type             16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes  16384 bytes
+aes-128-gcm     415730.06k  1102985.43k  1751709.87k  2016420.18k  2104216.23k  2115037.87k
+aes-192-gcm     394479.10k  1050095.08k  1590914.90k  1790463.66k  1891672.06k  1895213.74k
+aes-256-gcm     384360.59k   992853.40k  1467840.17k  1654775.81k  1727296.85k  1731985.41k
+
+OpenSSL 1.1.1k  25 Mar 2021
+built on: Mon Apr 12 01:45:13 2021 UTC
+platform: linux-aarch64
+options:  bn(64,64) rc4(char) des(int) idea(int) blowfish(ptr)
+compiler: /usr/bin/gcc-10 -fPIC -pthread -Wa,--noexecstack -Wall -O3 -march=armv8.2-a+fp16+rcpc+dotprod+crypto -mtune=neoverse-n1 -DOPENSSL_USE_NODELETE -DOPENSSL_PIC -DOPENSSL_CPUID_OBJ -DOPENSSL_BN_ASM_MONT -DSHA1_ASM -DSHA256_ASM -DSHA512_ASM -DKECCAK1600_ASM -DVPAES_ASM -DECP_NISTZ256_ASM -DPOLY1305_ASM -DNDEBUG
+OPENSSLDIR: "/tmp/openssl"
+ENGINESDIR: "/tmp/openssl/lib/engines-1.1"
+Seeding source: os-specific
+
+
+c5.large, stock openssl:
+
+The 'numbers' are in 1000s of bytes per second processed.
+type             16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes
+aes-128-gcm     593373.54k  1402104.55k  2664645.80k  4156100.27k  5131326.81k
+aes-192-gcm     568493.05k  1346222.44k  2434725.38k  3635490.13k  4378137.94k
+aes-256-gcm     546360.70k  1297013.18k  2236481.54k  3217863.68k  3771138.05k
+
+OpenSSL 1.0.2k-fips  26 Jan 2017
+built on: reproducible build, date unspecified
+platform: linux-x86_64
+options:  bn(64,64) md2(int) rc4(16x,int) des(idx,cisc,16,int) idea(int) blowfish(idx)
+compiler: gcc -I. -I.. -I../include  -fPIC -DOPENSSL_PIC -DZLIB -DOPENSSL_THREADS -D_REENTRANT -DDSO_DLFCN -DHAVE_DLFCN_H -DKRB5_MIT -m64 -DL_ENDIAN -Wall -O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector-strong --param=ssp-buffer-size=4 -grecord-gcc-switches    -m64 -mtune=generic -Wa,--noexecstack -DPURIFY -DOPENSSL_IA32_SSE2 -DOPENSSL_BN_ASM_MONT -DOPENSSL_BN_ASM_MONT5 -DOPENSSL_BN_ASM_GF2m -DRC4_ASM -DSHA1_ASM -DSHA256_ASM -DSHA512_ASM -DMD5_ASM -DAES_ASM -DVPAES_ASM -DBSAES_ASM -DWHIRLPOOL_ASM -DGHASH_ASM -DECP_NISTZ256_ASM
+OPENSSLDIR: "/etc/pki/tls"
+engines:  rdrand dynamic
+
+
+c5.large, custom:
+
+The 'numbers' are in 1000s of bytes per second processed.
+type             16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes  16384 bytes
+aes-128-gcm     471085.97k  1254768.66k  2542384.21k  4004738.73k  5168516.37k  5268723.03k
+aes-192-gcm     440132.97k  1206661.93k  2321882.50k  3540027.73k  4359091.54k  4436667.05k
+aes-256-gcm     414208.71k  1156634.05k  2133502.04k  3145185.96k  3753959.42k  3811562.84k
+
+OpenSSL 1.1.1k  25 Mar 2021
+built on: Mon Apr 12 03:05:59 2021 UTC
+platform: linux-x86_64
+options:  bn(64,64) rc4(16x,int) des(int) idea(int) blowfish(ptr)
+compiler: /usr/bin/gcc10-gcc -fPIC -pthread -m64 -Wa,--noexecstack -Wall -O3 -march=native -DOPENSSL_USE_NODELETE -DL_ENDIAN -DOPENSSL_PIC -DOPENSSL_CPUID_OBJ -DOPENSSL_IA32_SSE2 -DOPENSSL_BN_ASM_MONT -DOPENSSL_BN_ASM_MONT5 -DOPENSSL_BN_ASM_GF2m -DSHA1_ASM -DSHA256_ASM -DSHA512_ASM -DKECCAK1600_ASM -DRC4_ASM -DMD5_ASM -DAESNI_ASM -DVPAES_ASM -DGHASH_ASM -DECP_NISTZ256_ASM -DX25519_ASM -DPOLY1305_ASM -DNDEBUG
+OPENSSLDIR: "/tmp/openssl"
+ENGINESDIR: "/tmp/openssl/lib/engines-1.1"
+Seeding source: os-specific

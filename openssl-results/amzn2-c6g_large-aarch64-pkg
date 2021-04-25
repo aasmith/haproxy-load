@@ -1,0 +1,13 @@
+$ openssl speed aes-128-cbc
+Doing aes-128 cbc for 3s on 16 size blocks: 33129213 aes-128 cbc's in 3.00s
+Doing aes-128 cbc for 3s on 64 size blocks: 8820037 aes-128 cbc's in 3.00s
+Doing aes-128 cbc for 3s on 256 size blocks: 2234359 aes-128 cbc's in 3.00s
+Doing aes-128 cbc for 3s on 1024 size blocks: 564919 aes-128 cbc's in 3.00s
+Doing aes-128 cbc for 3s on 8192 size blocks: 70815 aes-128 cbc's in 3.00s
+OpenSSL 1.0.2k-fips  26 Jan 2017
+built on: reproducible build, date unspecified
+options:bn(64,64) md2(int) rc4(ptr,char) des(idx,cisc,16,int) aes(partial) idea(int) blowfish(ptr)
+compiler: gcc -I. -I.. -I../include  -fPIC -DOPENSSL_PIC -DZLIB -DOPENSSL_THREADS -D_REENTRANT -DDSO_DLFCN -DHAVE_DLFCN_H -DKRB5_MIT -DL_ENDIAN -Wall -O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector-strong --param=ssp-buffer-size=4 -grecord-gcc-switches -moutline-atomics   -Wa,--noexecstack -DPURIFY -DSHA1_ASM -DSHA256_ASM -DSHA512_ASM
+The 'numbers' are in 1000s of bytes per second processed.
+type             16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes
+aes-128 cbc     176689.14k   188160.79k   190665.30k   192825.69k   193372.16k

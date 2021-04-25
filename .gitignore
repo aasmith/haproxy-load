@@ -1,0 +1,3 @@
+**.DS_Store
+compute/.terraform
+compute/terraform.tfstate compute/terraform.tfstate.backup
